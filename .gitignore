@@ -11,7 +11,7 @@
 *.mod
 
 # Executable files
-holstain-chain
+test
 
 # Libraries
 *.lib
