@@ -40,7 +40,7 @@ subroutine initialize
   integer :: i,j
 
 ! set parameters
-  nelec = 8
+  nelec = 16
   nsite = 2*nelec
 
   t_hop     =  1d0
@@ -48,7 +48,7 @@ subroutine initialize
   
   omega0     =  0.1d0
   g_couple   =  0.1d0
-  gamma_damp =  0.1d0*omega0
+  gamma_damp =  0.2d0*omega0
 
   KbT = 0.5d0
 
@@ -98,7 +98,6 @@ subroutine set_gs_wavefunction
   allocate(work_lp(lwork))
   allocate(rwork(3*nsite-2))
   allocate(w(nsite))
-
 !LAPACK ==
 
   allocate(amat(nsite,nsite))
@@ -127,18 +126,23 @@ end subroutine set_gs_wavefunction
 subroutine Langevin_dynamics
   use global_variables
   implicit none
-  integer :: it
+  integer :: it, i
   real(8),allocatable :: xi(:), force(:)
   integer :: icount
   real(8) :: Etot, Eelec, Eion, Ecoup
-  real(8) :: Etot_t, Eelec_t, Eion_t, Ecoup_t
+  real(8) :: Etot_t, Eelec_t, Eion_t
+  real(8) :: Etot2
+  real(8) :: Etot2_t, Eelec2_t
+
+  complex(8),allocatable :: zhpsi_t(:,:)
   
   allocate(xi(nsite), force(nsite))
+  allocate(zhpsi_t(nsite,nelec))
 
   Etot=0d0
+  Etot2 = 0d0
   Eelec=0d0
   Eion=0d0
-  Ecoup=0d0
 
   open(30,file='energy_t.out')
 
@@ -154,17 +158,30 @@ subroutine Langevin_dynamics
 
 ! start: calculate observables
     icount = icount + 1
-    Eion_t = 0.5d0*sum(vt**2+omega0**2*xt**2)/nsite
-    Eelec_t = sum(conjg(zpsi)*matmul(ham0,zpsi))/nsite
-    Ecoup_t = - g_couple*sum(rho_e(:)*xt(:))/nsite
-    Etot_t = Eelec_t + Ecoup_t + Eion_t
+    ham = ham0
+    do i = 1, nsite
+      ham(i,i) = ham(i,i) - g_couple*xt_n(i)
+    end do
+
+    Eion_t = 0.5d0*sum(vt**2+omega0**2*xt**2)
+
+    zhpsi_t = matmul(ham,zpsi)
+    Eelec_t = sum(conjg(zpsi)*zhpsi_t)
+
+    zhpsi_t = matmul(ham,zhpsi_t)
+    Eelec2_t = sum(conjg(zpsi)*zhpsi_t)
+
+
+    Etot_t = Eelec_t + Eion_t
+    Etot2_t = Eelec2_t + 2d0*Eelec_t*Eion_t + Eion_t**2
 
     Eelec = Eelec + Eelec_t
-    Ecoup = Ecoup + Ecoup_t
     Eion  = Eion  + Eion_t
     Etot  = Etot  + Etot_t
+    Etot2  = Etot2  + Etot2_t
 
-    write(30,"(999e26.16e3)")dt*it,Eelec/icount,Ecoup/icount,Eion/icount,Etot/icount
+    write(30,"(999e26.16e3)")dt*it,Eelec/icount,Eion/icount,Etot/icount&
+      ,(Etot2/icount-(Etot/icount)**2)/nsite
 
 ! end  : calculate observables
 
