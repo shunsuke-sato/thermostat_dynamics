@@ -40,14 +40,14 @@ subroutine initialize
   integer :: i,j
 
 ! set parameters
-  nelec = 16
+  nelec = 64
   nsite = 2*nelec
 
   t_hop     =  1d0
   delta_gap =  0d0
   
   omega0     =  0.1d0
-  g_couple   =  0.1d0
+  g_couple   =  0.2d0
   gamma_damp =  0.2d0*omega0
 
   KbT = 0.5d0
@@ -137,6 +137,12 @@ subroutine calc_quantum_classical_ground_state
 
     xt = g_couple*rho_e/omega0**2
     
+  end do
+  close(30)
+
+  open(30,file='gs_data.out')
+  do i=1,nsite
+    write(30,"(I7,2x,999e26.16e3)")i,rho_e(i),xt(i)
   end do
   close(30)
 
