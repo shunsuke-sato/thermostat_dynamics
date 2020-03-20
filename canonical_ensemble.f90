@@ -10,6 +10,7 @@ module global_variables
   real(8) :: t_hop, delta_gap
   real(8) :: KbT
   real(8),allocatable :: ham(:,:), ham0(:,:)
+  real(8),allocatable :: lambda_sp(:)
   complex(8),allocatable :: zpsi(:,:)
   real(8),allocatable :: psi(:,:)
   real(8),allocatable :: rho_e(:)
@@ -30,7 +31,7 @@ program main
   call initialize
 
   call calc_quantum_classical_ground_state
-
+  call calc_electronic_canonical_ensemble
 
 end program main
 !-------------------------------------------------------------------------------
@@ -47,7 +48,7 @@ subroutine initialize
   delta_gap =  0d0
   
   omega0     =  0.1d0
-  g_couple   =  0.2d0
+  g_couple   =  0.0d0
   gamma_damp =  0.2d0*omega0
 
   KbT = 0.5d0
@@ -67,6 +68,7 @@ subroutine initialize
   
 
   allocate(ham(nsite,nsite), ham0(nsite, nsite))
+  allocate(lambda_sp(nsite))
 
   ham0 = 0d0
   do i = 1, nsite
@@ -121,6 +123,7 @@ subroutine calc_quantum_classical_ground_state
     call dsyev('V', 'U', nsite, amat(:,:), nsite &
       , w(:), work_lp(:), lwork, info)
 
+    lambda_sp(:) = w(:)
     psi(1:nsite,1:nelec) = amat(1:nsite,1:nelec)
 
     Eelec = sum(w(1:nelec))
@@ -147,6 +150,97 @@ subroutine calc_quantum_classical_ground_state
   close(30)
 
 end subroutine calc_quantum_classical_ground_state
+!-------------------------------------------------------------------------------
+subroutine calc_electronic_canonical_ensemble
+  use global_variables
+  use luxury
+  implicit  none
+  integer :: nocc_dist(nsite)
+  integer :: nlist_occ(nelec), nlist_unocc(nsite-nelec)
+  real(8),allocatable :: prob(:)
+  real(8) :: energy_diff, ss, rvec(1)
+  integer :: nchoise
+  integer :: iter, niter, i, j, k
+  real(8) :: Eelec_t, Eelec2_t, Egs
+  integer :: njump
+
+  niter = 512
+  njump = 0
+
+
+  nchoise = nelec*(nsite-nelec)
+  allocate(prob(0:nchoise))
+  nocc_dist = 0
+  nocc_dist(1:nelec) = 1
+  Egs = sum(nocc_dist*lambda_sp)
+
+  iter = 0
+  open(20,file='scf_chk.out')
+  do
+    iter = iter + 1
+
+    j = 0; k = 0
+    do i = 1, nsite
+      if(nocc_dist(i) == 0)then
+        j = j + 1
+        nlist_unocc(j) = i
+      else
+        k = k + 1
+        nlist_occ(k) = i
+      end if
+    end do
+
+    prob(0) = 1d0
+    k = 0
+    do i = 1, nelec
+      do j = 1, nsite-nelec
+        k = k + 1
+        energy_diff = lambda_sp(nlist_unocc(j))-lambda_sp(nlist_occ(i))
+        prob(k) = prob(k-1) + exp(-energy_diff/KbT)
+
+      end do
+    end do
+    if(k /= nchoise)stop 'error'
+    ss = prob(nchoise)
+    prob = prob/ss
+
+    call  ranlux_double (rvec, 1)
+    do i = 0, nchoise
+      if(prob(i)>= rvec(1))exit
+    end do
+
+    if(i /= 0)then      
+      njump = njump + 1
+      k = 0
+      do i = 1, nelec
+        do j = 1, nsite-nelec
+          k = k +1
+          if(k==i)then
+            if(nocc_dist(nlist_occ(i)) == 0) stop 'error1'
+            if(nocc_dist(nlist_unocc(j)) == 1) stop 'error2'
+            nocc_dist(nlist_occ(i)) = 0
+            nocc_dist(nlist_unocc(j)) = 1
+          end if
+        end do
+      end do
+    end if
+
+    ss = sum(nocc_dist*lambda_sp)
+    Eelec_t  = Eelec_t  + ss
+    Eelec2_t = Eelec2_t + ss**2
+    write(20,"(I7,2x,999e26.16e3)")iter,Eelec_t/iter-Egs,Eelec2_t/iter &
+      ,((Eelec2_t/iter)-(Eelec_t/iter)**2)/(KbT**2)
+
+    if(niter == iter)exit
+  end do
+  close(20)
+  write(*,*)"njump=",njump
+  write(*,"(A,2x,999e26.16e3)")"Eelec =",Eelec_t/niter-Egs
+  write(*,"(A,2x,999e26.16e3)")"Eelec2=",Eelec2_t/niter
+  write(*,"(A,2x,999e26.16e3)")"C_t   =",((Eelec2_t/iter)-(Eelec_t/iter)**2)/(KbT**2)
+
+end subroutine calc_electronic_canonical_ensemble
+!-------------------------------------------------------------------------------
 !-------------------------------------------------------------------------------
 !-------------------------------------------------------------------------------
 subroutine initialize_random_number_generator
@@ -226,7 +320,6 @@ subroutine gaussian_random_number_vec(rvec,nvec)
   end if
 
 end subroutine gaussian_random_number_vec
-!-------------------------------------------------------------------------------
 !-------------------------------------------------------------------------------
 !-------------------------------------------------------------------------------
 !-------------------------------------------------------------------------------
