@@ -45,13 +45,13 @@ subroutine initialize
   nsite = 2*nelec
 
   t_hop     =  1d0
-  delta_gap =  0d0
+  delta_gap =  0.0d0
   
   omega0     =  0.1d0
   g_couple   =  0.0d0
   gamma_damp =  0.2d0*omega0
 
-  KbT = 0.5d0
+  KbT = 0.2d0 !0.5d0
 
   tprop      =  2d0*pi*10000d0/omega0
   dt = 0.1d0
@@ -159,12 +159,19 @@ subroutine calc_electronic_canonical_ensemble
   integer :: nlist_occ(nelec), nlist_unocc(nsite-nelec)
   real(8),allocatable :: prob(:)
   real(8) :: energy_diff, ss, rvec(1)
-  integer :: nchoise
+  integer :: nchoise, ichoise
   integer :: iter, niter, i, j, k
   real(8) :: Eelec_t, Eelec2_t, Egs
+  real(8) :: Eelec_mb, Cv_mb
   integer :: njump
+  real(8) :: occ_dist(nsite), mu_chem, mu_chem_max, mu_chem_min
+  real(8) :: occ_dist_mb(nsite)
+  real(8) :: tmp_nelec, eps_chk
+  real(8) :: Eelec_sp, Cv_sp, Eelec2_sp
 
-  niter = 512
+  niter = 1024*8
+  eps_chk = 1d-14
+
   njump = 0
 
 
@@ -174,6 +181,7 @@ subroutine calc_electronic_canonical_ensemble
   nocc_dist(1:nelec) = 1
   Egs = sum(nocc_dist*lambda_sp)
 
+  occ_dist = 0d0
   iter = 0
   open(20,file='scf_chk.out')
   do
@@ -184,9 +192,11 @@ subroutine calc_electronic_canonical_ensemble
       if(nocc_dist(i) == 0)then
         j = j + 1
         nlist_unocc(j) = i
-      else
+      else if(nocc_dist(i) == 1)then
         k = k + 1
         nlist_occ(k) = i
+      else
+        stop 'error'
       end if
     end do
 
@@ -196,28 +206,49 @@ subroutine calc_electronic_canonical_ensemble
       do j = 1, nsite-nelec
         k = k + 1
         energy_diff = lambda_sp(nlist_unocc(j))-lambda_sp(nlist_occ(i))
-        prob(k) = prob(k-1) + exp(-energy_diff/KbT)
+        prob(k) = prob(k-1) + exp(-0.5d0*energy_diff/KbT) ! debug
 
       end do
     end do
     if(k /= nchoise)stop 'error'
+
+
+!    if(iter == 2)then
+!    open(30,file='prob.out')
+!    k = 0
+!    write(30,*)k,prob(k),0d0
+!    do i = 1, nelec
+!      do j = 1, nsite-nelec
+!        k = k + 1
+!        energy_diff = lambda_sp(nlist_unocc(j))-lambda_sp(nlist_occ(i))
+!        write(30,*)k,prob(k),energy_diff
+!      end do
+!    end do
+!
+!    close(30)
+!    stop
+!    end if
+
     ss = prob(nchoise)
     prob = prob/ss
 
     call  ranlux_double (rvec, 1)
-    do i = 0, nchoise
-      if(prob(i)>= rvec(1))exit
+    do ichoise = 0, nchoise
+      if(prob(ichoise)>= rvec(1))exit
     end do
+    if(ichoise > nchoise)stop 'error0'
+!    write(*,*)ichoise,rvec(1),prob(ichoise)
 
-    if(i /= 0)then      
+
+    if(ichoise /= 0)then      
       njump = njump + 1
       k = 0
       do i = 1, nelec
         do j = 1, nsite-nelec
           k = k +1
-          if(k==i)then
-            if(nocc_dist(nlist_occ(i)) == 0) stop 'error1'
-            if(nocc_dist(nlist_unocc(j)) == 1) stop 'error2'
+          if(k==ichoise)then
+            if(nocc_dist(nlist_occ(i)) /= 1) stop 'error1'
+            if(nocc_dist(nlist_unocc(j)) /= 0) stop 'error2'
             nocc_dist(nlist_occ(i)) = 0
             nocc_dist(nlist_unocc(j)) = 1
           end if
@@ -228,16 +259,59 @@ subroutine calc_electronic_canonical_ensemble
     ss = sum(nocc_dist*lambda_sp)
     Eelec_t  = Eelec_t  + ss
     Eelec2_t = Eelec2_t + ss**2
-    write(20,"(I7,2x,999e26.16e3)")iter,Eelec_t/iter-Egs,Eelec2_t/iter &
+    write(20,"(I7,2x,999e26.16e3)")iter,(Eelec_t/iter-Egs)/nsite,Eelec2_t/iter &
       ,((Eelec2_t/iter)-(Eelec_t/iter)**2)/(KbT**2)
 
+    occ_dist = occ_dist + nocc_dist
     if(niter == iter)exit
   end do
   close(20)
   write(*,*)"njump=",njump
-  write(*,"(A,2x,999e26.16e3)")"Eelec =",Eelec_t/niter-Egs
+  write(*,"(A,2x,999e26.16e3)")"Eelec =",(Eelec_t/niter-Egs)/nsite
   write(*,"(A,2x,999e26.16e3)")"Eelec2=",Eelec2_t/niter
   write(*,"(A,2x,999e26.16e3)")"C_t   =",((Eelec2_t/iter)-(Eelec_t/iter)**2)/(KbT**2)
+  Eelec_mb = Eelec_t/niter-Egs
+  Cv_mb    = ((Eelec2_t/iter)-(Eelec_t/iter)**2)/(KbT**2)
+
+  occ_dist_mb = occ_dist/niter
+
+! single-particle
+  mu_chem_min = lambda_sp(1)
+  mu_chem_max = lambda_sp(nsite)
+  do
+    mu_chem = 0.5d0*(mu_chem_max + mu_chem_min)
+    do i = 1, nsite
+      occ_dist(i) = 1d0/(exp((lambda_sp(i)-mu_chem)/KbT)+1d0)
+    end do
+    tmp_nelec = sum(occ_dist)
+    if(tmp_nelec > dble(nelec))then
+      mu_chem_max = mu_chem
+    else
+      mu_chem_min = mu_chem
+    end if
+    if((mu_chem_max - mu_chem_min) < eps_chk)exit
+
+  end do
+  mu_chem = 0.5d0*(mu_chem_max + mu_chem_min)
+  do i = 1, nsite
+    occ_dist(i) = 1d0/(exp((lambda_sp(i)-mu_chem)/KbT)+1d0)
+  end do
+
+  open(30,file="occ_dist.out")
+  do i = 1, nsite
+    write(30,"(I7,2x,99e26.16e3)")i,lambda_sp(i),occ_dist_mb(i),occ_dist(i)
+  end do
+  close(30)  
+
+  Eelec_sp  = sum(occ_dist*lambda_sp)
+  Eelec2_sp = sum(occ_dist*lambda_sp**2)
+  Cv_sp = (Eelec2_sp-Eelec_sp**2)/(kbT**2)
+  write(*,"(A)")"Single-particle evaluation"
+  write(*,"(A,2x,e26.16e3,2x,I7)")"num elecc =", sum(occ_dist),nelec
+  write(*,"(A,2x,999e26.16e3)")"Eelec =",(Eelec_sp-Egs)/nsite
+  write(*,"(A,2x,999e26.16e3)")"Eelec2=",Eelec2_sp
+  write(*,"(A,2x,999e26.16e3)")"C_t   =",Cv_sp
+
 
 end subroutine calc_electronic_canonical_ensemble
 !-------------------------------------------------------------------------------
