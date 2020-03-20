@@ -45,7 +45,7 @@ subroutine initialize
   nsite = 2*nelec
 
   t_hop     =  1d0
-  delta_gap =  0.0d0
+  delta_gap =  1.0d0
   
   omega0     =  0.1d0
   g_couple   =  0.0d0
@@ -76,6 +76,7 @@ subroutine initialize
     ham0(i,j) = -t_hop
     j = mod(i - 1 -1 + nsite, nsite) + 1
     ham0(i,j) = -t_hop
+    ham0(i,i) = ham0(i,i) + (-1)**(i+1)*0.5d0*delta_gap
   end do
 
   call initialize_random_number_generator
@@ -169,7 +170,7 @@ subroutine calc_electronic_canonical_ensemble
   real(8) :: tmp_nelec, eps_chk
   real(8) :: Eelec_sp, Cv_sp, Eelec2_sp
 
-  niter = 1024*8
+  niter = 1024*32
   eps_chk = 1d-14
 
   njump = 0
