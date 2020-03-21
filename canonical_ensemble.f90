@@ -16,7 +16,8 @@ module global_variables
   real(8),allocatable :: rho_e(:)
   real(8) :: omega0, g_couple, gamma_damp
   real(8),allocatable :: xt(:), xt_n(:), vt(:), vt_n(:), vt_o(:)
-
+  real(8) :: Egs_tot
+ 
 ! time-propagation
   real(8) :: tprop, dt
   integer :: nt
@@ -43,17 +44,17 @@ subroutine initialize
   integer :: i,j
 
 ! set parameters
-  nelec = 128
+  nelec = 64
   nsite = 2*nelec
 
   t_hop     =  1d0
-  delta_gap =  0.0d0
+  delta_gap =  1d0
   
   omega0     =  0.1d0
-  g_couple   =  0.1d0
-  gamma_damp =  0.2d0*omega0
+  g_couple   =  0.1d0*omega0**2
+  gamma_damp =  0.1d0*omega0
 
-  KbT = 0.2d0 !0.5d0
+  KbT = 0.5d0 !0.5d0
 
   tprop      =  2d0*pi*10000d0/omega0
   dt = 0.1d0
@@ -145,6 +146,8 @@ subroutine calc_quantum_classical_ground_state
     
   end do
   close(30)
+
+  Egs_tot = Etot
 
   open(30,file='gs_data.out')
   do i=1,nsite
@@ -437,15 +440,15 @@ subroutine calc_quantum_classical_canonical_ensemble
   allocate(amat(nsite,nsite))
 !LAPACK ==
 
-  nsample = 256
+  nsample = 1024
 
   nocc_dist = 0
   nocc_dist(1:nelec) = 1
 
-  x0 = xt
+  x0 = g_couple*rho_e/omega0**2
 
   Eelec = 0d0
-  Eph= 0d0
+  Eph = 0d0
   Etot =0d0
   Etot2 = 0d0
   ncount = 0
@@ -453,14 +456,14 @@ subroutine calc_quantum_classical_canonical_ensemble
   do isample = 1, nsample
     call gaussian_random_number_vec(dx,nsite)
     call gaussian_random_number_vec(pt,nsite)
-    dx = sqrt(KbT)/omega0**2*dx
-    pt = sqrt(KbT)*pt
+    dx = sqrt(KbT)/omega0*dx ! debug
+    pt = sqrt(KbT)*pt ! debug
     xt = x0 + dx
 
-    ss = g_couple*sum(rho_e*xt)
+    ss = g_couple*sum(rho_e*xt)/nelec
     ham = ham0
     do i = 1, nsite
-      ham(i,i) = ham(i,i) - g_couple*xt_n(i) + ss
+      ham(i,i) = ham(i,i) - g_couple*xt(i) + ss
     end do
 
 
@@ -507,10 +510,11 @@ subroutine calc_quantum_classical_canonical_ensemble
       if(mod(iter,nsite)==0)then
         ncount = ncount + 1
 
-        Eelec_t = sum(nocc_dist*lambda_sp)
+        Eelec_t = sum(nocc_dist*lambda_sp) 
         Eph_t   = sum(0.5d0*pt**2+0.5d0*omega0**2*dx**2+0.5d0*omega0**2*x0**2 &
           -g_couple*x0*rho_e)
-        Etot_t = Eelec_t + Eph_t
+!        Eph_t   = sum(0.5d0*pt**2+0.5d0*omega0**2*dx**2) ! debug
+        Etot_t = Eelec_t + Eph_t - Egs_tot
 
         Eelec = Eelec + Eelec_t
         Eph   = Eph   + Eph_t
