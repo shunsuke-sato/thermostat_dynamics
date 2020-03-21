@@ -183,6 +183,9 @@ subroutine calc_electronic_canonical_ensemble
   Egs = sum(nocc_dist*lambda_sp)
 
   occ_dist = 0d0
+
+  call pre_thermalization
+
   iter = 0
   open(20,file='scf_chk.out')
   do
@@ -208,6 +211,7 @@ subroutine calc_electronic_canonical_ensemble
         k = k + 1
         energy_diff = lambda_sp(nlist_unocc(j))-lambda_sp(nlist_occ(i))
         prob(k) = prob(k-1) + exp(-0.5d0*energy_diff/KbT) ! debug
+!        prob(k) = prob(k-1) + min(1d0, exp(-energy_diff/KbT)) ! debug
 
       end do
     end do
@@ -313,6 +317,86 @@ subroutine calc_electronic_canonical_ensemble
   write(*,"(A,2x,999e26.16e3)")"Eelec2=",Eelec2_sp
   write(*,"(A,2x,999e26.16e3)")"C_t   =",Cv_sp
 
+  contains
+    subroutine pre_thermalization
+      implicit none
+      
+      do iter = 1,nsite
+
+        j = 0; k = 0
+        do i = 1, nsite
+          if(nocc_dist(i) == 0)then
+            j = j + 1
+            nlist_unocc(j) = i
+          else if(nocc_dist(i) == 1)then
+            k = k + 1
+            nlist_occ(k) = i
+          else
+            stop 'error'
+          end if
+        end do
+
+        prob(0) = 1d0
+        k = 0
+        do i = 1, nelec
+          do j = 1, nsite-nelec
+            k = k + 1
+            energy_diff = lambda_sp(nlist_unocc(j))-lambda_sp(nlist_occ(i))
+            prob(k) = prob(k-1) + exp(-0.5d0*energy_diff/KbT) ! debug
+!            prob(k) = prob(k-1) + min(1d0, exp(-energy_diff/KbT)) ! debug
+
+          end do
+        end do
+        if(k /= nchoise)stop 'error'
+
+
+!    if(iter == 2)then
+!    open(30,file='prob.out')
+!    k = 0
+!    write(30,*)k,prob(k),0d0
+!    do i = 1, nelec
+!      do j = 1, nsite-nelec
+!        k = k + 1
+!        energy_diff = lambda_sp(nlist_unocc(j))-lambda_sp(nlist_occ(i))
+!        write(30,*)k,prob(k),energy_diff
+!      end do
+!    end do
+!
+!    close(30)
+!    stop
+!    end if
+
+        ss = prob(nchoise)
+        prob = prob/ss
+
+        call  ranlux_double (rvec, 1)
+        do ichoise = 0, nchoise
+          if(prob(ichoise)>= rvec(1))exit
+        end do
+        if(ichoise > nchoise)stop 'error0'
+!    write(*,*)ichoise,rvec(1),prob(ichoise)
+
+
+        if(ichoise /= 0)then      
+          njump = njump + 1
+          k = 0
+          do i = 1, nelec
+            do j = 1, nsite-nelec
+              k = k +1
+              if(k==ichoise)then
+                if(nocc_dist(nlist_occ(i)) /= 1) stop 'error1'
+                if(nocc_dist(nlist_unocc(j)) /= 0) stop 'error2'
+                nocc_dist(nlist_occ(i)) = 0
+                nocc_dist(nlist_unocc(j)) = 1
+              end if
+            end do
+          end do
+        end if
+
+      end do
+
+
+    end subroutine pre_thermalization
 
 end subroutine calc_electronic_canonical_ensemble
 !-------------------------------------------------------------------------------
