@@ -31,7 +31,9 @@ program main
   call initialize
 
   call calc_quantum_classical_ground_state
-  call calc_electronic_canonical_ensemble
+!  call calc_electronic_canonical_ensemble
+
+  call calc_quantum_classical_canonical_ensemble
 
 end program main
 !-------------------------------------------------------------------------------
@@ -41,14 +43,14 @@ subroutine initialize
   integer :: i,j
 
 ! set parameters
-  nelec = 64
+  nelec = 128
   nsite = 2*nelec
 
   t_hop     =  1d0
-  delta_gap =  1.0d0
+  delta_gap =  0.0d0
   
   omega0     =  0.1d0
-  g_couple   =  0.0d0
+  g_couple   =  0.1d0
   gamma_damp =  0.2d0*omega0
 
   KbT = 0.2d0 !0.5d0
@@ -170,7 +172,7 @@ subroutine calc_electronic_canonical_ensemble
   real(8) :: tmp_nelec, eps_chk
   real(8) :: Eelec_sp, Cv_sp, Eelec2_sp
 
-  niter = 1024*32
+  niter = 1000000
   eps_chk = 1d-14
 
   njump = 0
@@ -204,13 +206,14 @@ subroutine calc_electronic_canonical_ensemble
       end if
     end do
 
-    prob(0) = 1d0
+    prob(0) = 0d0
     k = 0
     do i = 1, nelec
       do j = 1, nsite-nelec
         k = k + 1
         energy_diff = lambda_sp(nlist_unocc(j))-lambda_sp(nlist_occ(i))
-        prob(k) = prob(k-1) + exp(-0.5d0*energy_diff/KbT) ! debug
+        prob(k) = prob(k-1) + 1d0 ! debug
+!        prob(k) = prob(k-1) + exp(-0.5d0*energy_diff/KbT) ! debug
 !        prob(k) = prob(k-1) + min(1d0, exp(-energy_diff/KbT)) ! debug
 
       end do
@@ -254,8 +257,12 @@ subroutine calc_electronic_canonical_ensemble
           if(k==ichoise)then
             if(nocc_dist(nlist_occ(i)) /= 1) stop 'error1'
             if(nocc_dist(nlist_unocc(j)) /= 0) stop 'error2'
-            nocc_dist(nlist_occ(i)) = 0
-            nocc_dist(nlist_unocc(j)) = 1
+            call  ranlux_double (rvec, 1)
+            energy_diff = lambda_sp(nlist_unocc(j))-lambda_sp(nlist_occ(i))
+            if(rvec(1) < exp(-energy_diff/KbT))then
+              nocc_dist(nlist_occ(i)) = 0
+              nocc_dist(nlist_unocc(j)) = 1
+            end if
           end if
         end do
       end do
@@ -399,6 +406,137 @@ subroutine calc_electronic_canonical_ensemble
     end subroutine pre_thermalization
 
 end subroutine calc_electronic_canonical_ensemble
+!-------------------------------------------------------------------------------
+subroutine calc_quantum_classical_canonical_ensemble
+  use global_variables
+  implicit none
+  real(8) :: x0(nsite)
+  real(8) :: dx(nsite),pt(nsite)
+  real(8) :: ss
+  integer :: ncount
+  integer :: i,j,k
+  integer :: i0,j0,k0
+  integer :: nocc_dist(nsite)
+  integer :: nlist_occ(nelec), nlist_unocc(nsite-nelec)
+  integer :: isample,nsample
+  integer :: iter
+  real(8) :: Eelec_t, Eph_t, Etot_t
+  real(8) :: Eelec, Eph, Etot, Etot2, cv
+  real(8) :: rvec(1), energy_diff
+!LAPACK ==
+  real(8), allocatable :: amat(:,:)
+  integer :: lwork
+  real(8),allocatable :: work_lp(:)
+  real(8),allocatable :: rwork(:),w(:)
+  integer :: info
+
+  lwork = 6*nsite**2
+  allocate(work_lp(lwork))
+  allocate(rwork(3*nsite-2))
+  allocate(w(nsite))
+  allocate(amat(nsite,nsite))
+!LAPACK ==
+
+  nsample = 256
+
+  nocc_dist = 0
+  nocc_dist(1:nelec) = 1
+
+  x0 = xt
+
+  Eelec = 0d0
+  Eph= 0d0
+  Etot =0d0
+  Etot2 = 0d0
+  ncount = 0
+  open(30,file='convergence.out')
+  do isample = 1, nsample
+    call gaussian_random_number_vec(dx,nsite)
+    call gaussian_random_number_vec(pt,nsite)
+    dx = sqrt(KbT)/omega0**2*dx
+    pt = sqrt(KbT)*pt
+    xt = x0 + dx
+
+    ss = g_couple*sum(rho_e*xt)
+    ham = ham0
+    do i = 1, nsite
+      ham(i,i) = ham(i,i) - g_couple*xt_n(i) + ss
+    end do
+
+
+    amat = ham
+    call dsyev('V', 'U', nsite, amat(:,:), nsite &
+      , w(:), work_lp(:), lwork, info)
+
+    lambda_sp(:) = w(:)
+    psi(1:nsite,1:nelec) = amat(1:nsite,1:nelec)
+
+    do iter = 1, nsite*128
+
+      j = 0; k = 0
+      do i = 1, nsite
+        if(nocc_dist(i) == 0)then
+          j = j + 1
+          nlist_unocc(j) = i
+        else if(nocc_dist(i) == 1)then
+          k = k + 1
+          nlist_occ(k) = i
+        else
+          stop 'error'
+        end if
+      end do
+
+      call  ranlux_double (rvec, 1)
+      rvec(1) = rvec(1)*nelec
+      k0 = aint(rvec(1))
+      k0 = mod(k0,nelec)+1
+      call  ranlux_double (rvec, 1)
+      rvec(1) = rvec(1)*(nsite-nelec)
+      j0 =aint(rvec(1))
+      j0 = mod(j0,(nsite-nelec))+1
+      energy_diff = lambda_sp(nlist_unocc(j0))-lambda_sp(nlist_occ(k0))
+      call  ranlux_double (rvec, 1)
+
+      if(exp(-energy_diff/KbT) > rvec(1))then
+        if(nocc_dist(nlist_occ(k0)) /= 1) stop 'error1'
+        if(nocc_dist(nlist_unocc(j0)) /= 0) stop 'error2'
+        nocc_dist(nlist_occ(k0)) = 0
+        nocc_dist(nlist_unocc(j0)) = 1
+      end if
+
+      if(mod(iter,nsite)==0)then
+        ncount = ncount + 1
+
+        Eelec_t = sum(nocc_dist*lambda_sp)
+        Eph_t   = sum(0.5d0*pt**2+0.5d0*omega0**2*dx**2+0.5d0*omega0**2*x0**2 &
+          -g_couple*x0*rho_e)
+        Etot_t = Eelec_t + Eph_t
+
+        Eelec = Eelec + Eelec_t
+        Eph   = Eph   + Eph_t
+        Etot  = Etot  + Etot_t
+        Etot2 = Etot2 + Etot_t**2
+        write(30,"(I7,2x,99e26.16e3)")ncount,Eelec/ncount,Eph/ncount,Etot/ncount &
+          ,(Etot2/ncount-(Etot/ncount)**2)/KbT**2
+      end if
+
+      
+    end do
+
+  end do
+  close(30)
+
+  Eelec = Eelec/ncount
+  Eph   = Eph/ncount
+  Etot  = Etot/ncount
+  Etot2 = Etot2/ncount
+  cv = (Etot2-Etot**2)/KbT**2
+  write(*,"(A,2x,999e26.16e3)")'Eelec=',Eelec/nsite
+  write(*,"(A,2x,999e26.16e3)")'Eph  =',Eph/nsite
+  write(*,"(A,2x,999e26.16e3)")'Etot =',Etot/nsite
+  write(*,"(A,2x,999e26.16e3)")'cv   =',cv/nsite
+
+end subroutine calc_quantum_classical_canonical_ensemble
 !-------------------------------------------------------------------------------
 !-------------------------------------------------------------------------------
 !-------------------------------------------------------------------------------
