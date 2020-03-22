@@ -40,17 +40,17 @@ subroutine initialize
   integer :: i,j
 
 ! set parameters
-  nelec = 16
+  nelec = 64
   nsite = 2*nelec
 
   t_hop     =  1d0
-  delta_gap =  0d0
+  delta_gap =  1d0
   
   omega0     =  0.1d0
-  g_couple   =  0.1d0
+  g_couple   =  0.1d0 
   gamma_damp =  0.2d0*omega0
 
-  KbT = 0.5d0
+  KbT = 3d0
 
   tprop      =  2d0*pi*10000d0/omega0
   dt = 0.1d0
@@ -87,6 +87,7 @@ subroutine set_gs_wavefunction
   use global_variables
   implicit none
   integer :: i
+  complex(8) :: zhpsi_t(nsite,nelec), zhpsi2_t(nsite,nelec)
 !LAPACK ==
   real(8), allocatable :: amat(:,:)
   integer :: lwork
@@ -120,24 +121,61 @@ subroutine set_gs_wavefunction
 
   zpsi(:,1:nelec) = amat(:,1:nelec)
 
+!  zhpsi_t = matmul(ham0,zpsi)
+!  zhpsi2_t = matmul(ham0,zhpsi_t)
+!  write(*,*)sum(conjg(zpsi)*zhpsi_t),sum(conjg(zpsi)*zhpsi2_t)
+!  write(*,*)sum(conjg(zpsi)*zhpsi2_t)-sum(conjg(zpsi)*zhpsi_t)**2
+!  do i = 1, nelec
+!    write(*,*)i,w(i),sum(conjg(zpsi(:,i))*zhpsi_t(:,i))
+!    write(*,*)i,w(i)**2,sum(conjg(zpsi(:,i))*zhpsi2_t(:,i))
+!  end do
+!
+!  do i = 1, nelec
+!    zhpsi2_t(:,i) = zhpsi_t(:,i) - w(i)*zpsi(:,i)
+!  end do
+!  write(*,*)sum(abs(zhpsi2_t)**2)
+!  stop
 
 end subroutine set_gs_wavefunction
 !-------------------------------------------------------------------------------
 subroutine Langevin_dynamics
   use global_variables
   implicit none
-  integer :: it, i
+  integer :: it, i,j
   real(8),allocatable :: xi(:), force(:)
   integer :: icount
   real(8) :: Etot, Eelec, Eion, Ecoup
   real(8) :: Etot_t, Eelec_t, Eion_t
   real(8) :: Etot2
   real(8) :: Etot2_t, Eelec2_t
+  real(8) :: rvec1(nsite),rvec2(nsite)
+  real(8) :: ss
+  complex(8) :: zs
 
-  complex(8),allocatable :: zhpsi_t(:,:)
+  complex(8),allocatable :: zhpsi_t(:,:),zhpsi2_t(:,:)
+  complex(8),allocatable :: zham2(:,:)
+  real(8),allocatable :: eps_sp_t(:)
   
   allocate(xi(nsite), force(nsite))
+  allocate(zham2(nelec,nelec))
   allocate(zhpsi_t(nsite,nelec))
+  allocate(zhpsi2_t(nsite,nelec))
+  allocate(eps_sp_t(nelec))
+
+  do i = 1, nelec
+    call ranlux_double(rvec1,nsite)
+    call ranlux_double(rvec2,nsite)
+    zpsi(:,i)=rvec1(:)*exp(zi*2d0*pi*rvec2(:))
+  end do
+
+  do i = 1, nelec
+    ss = sum(abs(zpsi(:,i))**2)
+    zpsi(:,i) = zpsi(:,i)/sqrt(ss)
+    do j = 1, i-1
+      zs = sum(conjg(zpsi(:,j))*zpsi(:,i))
+      zpsi(:,i) = zpsi(:,i) -zs*zpsi(:,j)
+    end do
+  end do
 
   Etot=0d0
   Etot2 = 0d0
@@ -166,14 +204,28 @@ subroutine Langevin_dynamics
     Eion_t = 0.5d0*sum(vt**2+omega0**2*xt**2)
 
     zhpsi_t = matmul(ham,zpsi)
-    Eelec_t = sum(conjg(zpsi)*zhpsi_t)
+    zhpsi2_t = matmul(ham,zhpsi_t)
 
-    zhpsi_t = matmul(ham,zhpsi_t)
-    Eelec2_t = sum(conjg(zpsi)*zhpsi_t)
+    do i = 1,nelec
+      eps_sp_t(i) = sum(conjg(zpsi(:,i))*zhpsi_t(:,i))
+    end do
+    Eelec_t = sum(eps_sp_t)
+
+    Eelec2_t = sum(conjg(zpsi)*zhpsi2_t)
+    do i = 1,nelec
+      do j = i+1,nelec
+        Eelec2_t = Eelec2_t + 2d0*eps_sp_t(i)*eps_sp_t(j)
+      end do
+    end do
+
+
+!    write(*,*)Eelec_t,Eelec2_t,Eelec2_t-Eelec_t**2
 
 
     Etot_t = Eelec_t + Eion_t
     Etot2_t = Eelec2_t + 2d0*Eelec_t*Eion_t + Eion_t**2
+!    Etot_t =  Eion_t ! debug
+!    Etot2_t = Eion_t**2 ! debug
 
     Eelec = Eelec + Eelec_t
     Eion  = Eion  + Eion_t
@@ -181,7 +233,7 @@ subroutine Langevin_dynamics
     Etot2  = Etot2  + Etot2_t
 
     write(30,"(999e26.16e3)")dt*it,Eelec/icount,Eion/icount,Etot/icount&
-      ,(Etot2/icount-(Etot/icount)**2)/nsite
+      ,((Etot2/icount-(Etot/icount)**2)/nsite)/KbT**2
 
 ! end  : calculate observables
 
