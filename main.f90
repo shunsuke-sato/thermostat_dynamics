@@ -47,12 +47,12 @@ subroutine initialize
   delta_gap =  1d0
   
   omega0     =  0.1d0
-  g_couple   =  0.1d0 
-  gamma_damp =  0.2d0*omega0
+  g_couple   =  0.1d0  ! debug
+  gamma_damp =  0.2d0*omega0 ! debug
 
   KbT = 3d0
 
-  tprop      =  2d0*pi*10000d0/omega0
+  tprop      =  1000d0 !2d0*pi*10000d0/omega0
   dt = 0.1d0
   nt = aint(tprop/dt)+1
 
@@ -151,6 +151,7 @@ subroutine Langevin_dynamics
   real(8) :: rvec1(nsite),rvec2(nsite)
   real(8) :: ss
   complex(8) :: zs
+  logical :: if_file_exists
 
   complex(8),allocatable :: zhpsi_t(:,:),zhpsi2_t(:,:)
   complex(8),allocatable :: zham2(:,:)
@@ -162,11 +163,22 @@ subroutine Langevin_dynamics
   allocate(zhpsi2_t(nsite,nelec))
   allocate(eps_sp_t(nelec))
 
-  do i = 1, nelec
-    call ranlux_double(rvec1,nsite)
-    call ranlux_double(rvec2,nsite)
-    zpsi(:,i)=rvec1(:)*exp(zi*2d0*pi*rvec2(:))
-  end do
+  inquire(file="checkpoint.out",exist=if_file_exists)
+
+  if(if_file_exists)then
+    open(40,file="checkpoint.out",form='unformatted')
+    read(40)zpsi
+    read(40)xt_n,xt
+    read(40)vt_n,vt_o
+    close(40)
+
+  else
+    do i = 1, nelec
+      call ranlux_double(rvec1,nsite)
+      call ranlux_double(rvec2,nsite)
+      zpsi(:,i)=rvec1(:)*exp(zi*2d0*pi*rvec2(:))
+    end do
+  end if
 
   do i = 1, nelec
     ss = sum(abs(zpsi(:,i))**2)
@@ -182,6 +194,8 @@ subroutine Langevin_dynamics
   Eelec=0d0
   Eion=0d0
 
+
+
   open(30,file='energy_t.out')
 
   icount = 0
@@ -190,7 +204,7 @@ subroutine Langevin_dynamics
     if(mod(it, max(nt/200, 1)) == 0)write(*,*)"it/nt=",it,dble(it)/dble(nt)
     call gaussian_random_number_vec(xi,nsite)
     call calc_density
-    force(:) = g_couple*rho_e(:) - omega0*xt
+    force(:) = g_couple*rho_e(:) - omega0**2*xt
     vt_n = vt_o*exp(-gamma_damp*dt) + force*dt + sqrt(2d0*KbT*gamma_damp*dt)*xi
     vt = 0.5d0*(vt_n + vt_o)
 
@@ -206,15 +220,22 @@ subroutine Langevin_dynamics
     zhpsi_t = matmul(ham,zpsi)
     zhpsi2_t = matmul(ham,zhpsi_t)
 
+    Eelec_t = 0d0
     do i = 1,nelec
-      eps_sp_t(i) = sum(conjg(zpsi(:,i))*zhpsi_t(:,i))
+      zham2(i,i) = sum(conjg(zpsi(:,i))*zhpsi_t(:,i))
+      Eelec_t = Eelec_t + zham2(i,i)
+      do j = i+1,nelec
+        zham2(j,i) = sum(conjg(zpsi(:,j))*zhpsi_t(:,i))
+        zham2(i,j) = conjg(zham2(j,i))
+      end do
     end do
-    Eelec_t = sum(eps_sp_t)
+
 
     Eelec2_t = sum(conjg(zpsi)*zhpsi2_t)
     do i = 1,nelec
       do j = i+1,nelec
-        Eelec2_t = Eelec2_t + 2d0*eps_sp_t(i)*eps_sp_t(j)
+        Eelec2_t = Eelec2_t + 2d0*real(zham2(i,i))*real(zham2(j,j)) &
+          -2d0*abs(zham2(i,j))**2
       end do
     end do
 
@@ -247,6 +268,12 @@ subroutine Langevin_dynamics
   end do
 
   close(30)
+
+  open(40,file="checkpoint.out",form='unformatted')
+  write(40)zpsi
+  write(40)xt_n,xt
+  write(40)vt_n,vt_o
+  close(40)
 
 
 end subroutine Langevin_dynamics
