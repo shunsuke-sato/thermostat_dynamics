@@ -52,7 +52,7 @@ subroutine initialize
 
   KbT = 3d0
 
-  tprop      =  1000d0 !2d0*pi*10000d0/omega0
+  tprop      =  10000d0 !2d0*pi*10000d0/omega0
   dt = 0.1d0
   nt = aint(tprop/dt)+1
 
