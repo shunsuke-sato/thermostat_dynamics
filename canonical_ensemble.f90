@@ -520,7 +520,7 @@ subroutine calc_quantum_classical_canonical_ensemble
         Eph_t   = sum(0.5d0*pt**2+0.5d0*omega0**2*dx**2+0.5d0*omega0**2*x0**2 &
           -g_couple*x0*rho_e)
 !        Eph_t   = sum(0.5d0*pt**2+0.5d0*omega0**2*dx**2) ! debug
-        Etot_t = Eelec_t + Eph_t - Egs_tot
+        Etot_t = Eelec_t + Eph_t ! - Egs_tot
 
         Eelec = Eelec + Eelec_t
         Eph   = Eph   + Eph_t
