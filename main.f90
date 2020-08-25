@@ -19,6 +19,10 @@ module global_variables
   real(8) :: tprop, dt
   integer :: nt
 
+! block average
+  integer :: nblock
+  real(8) :: t_relax
+
 
 end module global_variables
 !-------------------------------------------------------------------------------
@@ -47,14 +51,19 @@ subroutine initialize
   delta_gap =  1d0
   
   omega0     =  0.1d0
-  g_couple   =  0.1d0  ! debug
-  gamma_damp =  0.2d0*omega0 ! debug
+  g_couple   =  0.1d0*omega0  ! debug
+  gamma_damp =  0.1d0*omega0 ! debug
 
   KbT = 3d0
+  open(30,file='inp_tmp')
+  read(30,*)KbT
+  close(30)
 
   tprop      =  10000d0 !2d0*pi*10000d0/omega0
   dt = 0.1d0
   nt = aint(tprop/dt)+1
+
+  nblock = 10
 
 
   allocate(zpsi(nsite,nelec))
@@ -153,6 +162,10 @@ subroutine Langevin_dynamics
   complex(8) :: zs
   logical :: if_file_exists
 
+  real(8) :: ss_ave, ss_sigma
+  real(8),allocatable :: Eelec_bave(:), Eion_bave(:)
+  real(8),allocatable :: Etot_bave(:), cv_bave(:)
+
   complex(8),allocatable :: zhpsi_t(:,:),zhpsi2_t(:,:)
   complex(8),allocatable :: zham2(:,:)
   real(8),allocatable :: eps_sp_t(:)
@@ -162,6 +175,8 @@ subroutine Langevin_dynamics
   allocate(zhpsi_t(nsite,nelec))
   allocate(zhpsi2_t(nsite,nelec))
   allocate(eps_sp_t(nelec))
+
+  allocate(Eelec_bave(0:nblock), Eion_bave(0:nblock), Etot_bave(0:nblock), cv_bave(0:nblock))
 
   inquire(file="checkpoint.out",exist=if_file_exists)
 
@@ -188,6 +203,8 @@ subroutine Langevin_dynamics
       zpsi(:,i) = zpsi(:,i) -zs*zpsi(:,j)
     end do
   end do
+
+  block_ave: do iblock = 0, nblock
 
   Etot=0d0
   Etot2 = 0d0
@@ -268,6 +285,39 @@ subroutine Langevin_dynamics
   end do
 
   close(30)
+
+  Eelec_bave(iblock)= Eelec/icount
+  Eion_bave(iblock) = Eion/icount
+  Etot_bave(iblock) = Etot/icount
+  cv_bave(iblock) = ((Etot2/icount-(Etot/icount)**2)/nsite)/KbT**2
+
+  end do block_ave
+
+  
+  ss_ave = sum(Eelec_bave(1:nblock))/nblock
+  ss_sigma = sqrt(sum((Eelec_bave(1:nblock)-ss_ave)**2  )/(nblock - 1))
+  write(*,"A,2x,999e26.16e3)")"Eelec              =",ss_ave
+  write(*,"A,2x,999e26.16e3)")"standard deviation =",ss_sigma
+  write(*,"A,2x,999e26.16e3)")"standard error     =",ss_sigma/sqrt(dble(nblock))
+
+  ss_ave = sum(Eion_bave(1:nblock))/nblock
+  ss_sigma = sqrt(sum((Eion_bave(1:nblock)-ss_ave)**2  )/(nblock - 1))
+  write(*,"A,2x,999e26.16e3)")"Eion               =",ss_ave
+  write(*,"A,2x,999e26.16e3)")"standard deviation =",ss_sigma
+  write(*,"A,2x,999e26.16e3)")"standard error     =",ss_sigma/sqrt(dble(nblock))
+
+  ss_ave = sum(Etot_bave(1:nblock))/nblock
+  ss_sigma = sqrt(sum((Etot_bave(1:nblock)-ss_ave)**2  )/(nblock - 1))
+  write(*,"A,2x,999e26.16e3)")"Etot               =",ss_ave
+  write(*,"A,2x,999e26.16e3)")"standard deviation =",ss_sigma
+  write(*,"A,2x,999e26.16e3)")"standard error     =",ss_sigma/sqrt(dble(nblock))
+
+  ss_ave = sum(cv_bave(1:nblock))/nblock
+  ss_sigma = sqrt(sum((cv_bave(1:nblock)-ss_ave)**2  )/(nblock - 1))
+  write(*,"A,2x,999e26.16e3)")"cv                 =",ss_ave
+  write(*,"A,2x,999e26.16e3)")"standard deviation =",ss_sigma
+  write(*,"A,2x,999e26.16e3)")"standard error     =",ss_sigma/sqrt(dble(nblock))
+
 
   open(40,file="checkpoint.out",form='unformatted')
   write(40)zpsi
