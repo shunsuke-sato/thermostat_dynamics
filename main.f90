@@ -162,6 +162,7 @@ subroutine Langevin_dynamics
   complex(8) :: zs
   logical :: if_file_exists
 
+  integer :: iblock
   real(8) :: ss_ave, ss_sigma
   real(8),allocatable :: Eelec_bave(:), Eion_bave(:)
   real(8),allocatable :: Etot_bave(:), cv_bave(:)
@@ -296,27 +297,27 @@ subroutine Langevin_dynamics
   
   ss_ave = sum(Eelec_bave(1:nblock))/nblock
   ss_sigma = sqrt(sum((Eelec_bave(1:nblock)-ss_ave)**2  )/(nblock - 1))
-  write(*,"A,2x,999e26.16e3)")"Eelec              =",ss_ave
-  write(*,"A,2x,999e26.16e3)")"standard deviation =",ss_sigma
-  write(*,"A,2x,999e26.16e3)")"standard error     =",ss_sigma/sqrt(dble(nblock))
+  write(*,"(A,2x,999e26.16e3)")"Eelec              =",ss_ave
+  write(*,"(A,2x,999e26.16e3)")"standard deviation =",ss_sigma
+  write(*,"(A,2x,999e26.16e3)")"standard error     =",ss_sigma/sqrt(dble(nblock))
 
   ss_ave = sum(Eion_bave(1:nblock))/nblock
   ss_sigma = sqrt(sum((Eion_bave(1:nblock)-ss_ave)**2  )/(nblock - 1))
-  write(*,"A,2x,999e26.16e3)")"Eion               =",ss_ave
-  write(*,"A,2x,999e26.16e3)")"standard deviation =",ss_sigma
-  write(*,"A,2x,999e26.16e3)")"standard error     =",ss_sigma/sqrt(dble(nblock))
+  write(*,"(A,2x,999e26.16e3)")"Eion               =",ss_ave
+  write(*,"(A,2x,999e26.16e3)")"standard deviation =",ss_sigma
+  write(*,"(A,2x,999e26.16e3)")"standard error     =",ss_sigma/sqrt(dble(nblock))
 
   ss_ave = sum(Etot_bave(1:nblock))/nblock
   ss_sigma = sqrt(sum((Etot_bave(1:nblock)-ss_ave)**2  )/(nblock - 1))
-  write(*,"A,2x,999e26.16e3)")"Etot               =",ss_ave
-  write(*,"A,2x,999e26.16e3)")"standard deviation =",ss_sigma
-  write(*,"A,2x,999e26.16e3)")"standard error     =",ss_sigma/sqrt(dble(nblock))
+  write(*,"(A,2x,999e26.16e3)")"Etot               =",ss_ave
+  write(*,"(A,2x,999e26.16e3)")"standard deviation =",ss_sigma
+  write(*,"(A,2x,999e26.16e3)")"standard error     =",ss_sigma/sqrt(dble(nblock))
 
   ss_ave = sum(cv_bave(1:nblock))/nblock
   ss_sigma = sqrt(sum((cv_bave(1:nblock)-ss_ave)**2  )/(nblock - 1))
-  write(*,"A,2x,999e26.16e3)")"cv                 =",ss_ave
-  write(*,"A,2x,999e26.16e3)")"standard deviation =",ss_sigma
-  write(*,"A,2x,999e26.16e3)")"standard error     =",ss_sigma/sqrt(dble(nblock))
+  write(*,"(A,2x,999e26.16e3)")"cv                 =",ss_ave
+  write(*,"(A,2x,999e26.16e3)")"standard deviation =",ss_sigma
+  write(*,"(A,2x,999e26.16e3)")"standard error     =",ss_sigma/sqrt(dble(nblock))
 
 
   open(40,file="checkpoint.out",form='unformatted')
