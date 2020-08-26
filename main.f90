@@ -83,6 +83,7 @@ subroutine initialize
     ham0(i,j) = -t_hop
     j = mod(i - 1 -1 + nsite, nsite) + 1
     ham0(i,j) = -t_hop
+    ham0(i,i) = ham0(i,i) + (-1)**(i+1)*0.5d0*delta_gap
   end do
 
   call initialize_random_number_generator
@@ -166,6 +167,7 @@ subroutine Langevin_dynamics
   real(8) :: ss_ave, ss_sigma
   real(8),allocatable :: Eelec_bave(:), Eion_bave(:)
   real(8),allocatable :: Etot_bave(:), cv_bave(:)
+  real(8) :: results_data(99)
 
   complex(8),allocatable :: zhpsi_t(:,:),zhpsi2_t(:,:)
   complex(8),allocatable :: zham2(:,:)
@@ -306,25 +308,38 @@ subroutine Langevin_dynamics
   write(*,"(A,2x,999e26.16e3)")"Eelec              =",ss_ave
   write(*,"(A,2x,999e26.16e3)")"standard deviation =",ss_sigma
   write(*,"(A,2x,999e26.16e3)")"standard error     =",ss_sigma/sqrt(dble(nblock))
+  results_data(1) = kbt
+  results_data(2) = ss_ave
+  results_data(3) = ss_sigma/sqrt(dble(nblock))
 
   ss_ave = sum(Eion_bave(1:nblock))/nblock
   ss_sigma = sqrt(sum((Eion_bave(1:nblock)-ss_ave)**2  )/(nblock - 1))
   write(*,"(A,2x,999e26.16e3)")"Eion               =",ss_ave
   write(*,"(A,2x,999e26.16e3)")"standard deviation =",ss_sigma
   write(*,"(A,2x,999e26.16e3)")"standard error     =",ss_sigma/sqrt(dble(nblock))
+  results_data(4) = ss_ave
+  results_data(5) = ss_sigma/sqrt(dble(nblock))
 
   ss_ave = sum(Etot_bave(1:nblock))/nblock
   ss_sigma = sqrt(sum((Etot_bave(1:nblock)-ss_ave)**2  )/(nblock - 1))
   write(*,"(A,2x,999e26.16e3)")"Etot               =",ss_ave
   write(*,"(A,2x,999e26.16e3)")"standard deviation =",ss_sigma
   write(*,"(A,2x,999e26.16e3)")"standard error     =",ss_sigma/sqrt(dble(nblock))
+  results_data(6) = ss_ave
+  results_data(7) = ss_sigma/sqrt(dble(nblock))
 
   ss_ave = sum(cv_bave(1:nblock))/nblock
   ss_sigma = sqrt(sum((cv_bave(1:nblock)-ss_ave)**2  )/(nblock - 1))
   write(*,"(A,2x,999e26.16e3)")"cv                 =",ss_ave
   write(*,"(A,2x,999e26.16e3)")"standard deviation =",ss_sigma
   write(*,"(A,2x,999e26.16e3)")"standard error     =",ss_sigma/sqrt(dble(nblock))
+  results_data(8) = ss_ave
+  results_data(9) = ss_sigma/sqrt(dble(nblock))
 
+
+  open(40,file='results_data.out')
+  write(40,"(999e26.16e3)")results_data(1:9)
+  close(40)
 
   open(40,file="checkpoint.out",form='unformatted')
   write(40)zpsi
