@@ -257,14 +257,23 @@ subroutine Langevin_dynamics
     end do
 
 
-    Eelec2_t = sum(conjg(zpsi)*zhpsi2_t)
+!    Eelec2_t = sum(conjg(zpsi)*zhpsi2_t)
+!    do i = 1,nelec
+!      do j = i+1,nelec
+!        Eelec2_t = Eelec2_t + 2d0*real(zham2(i,i))*real(zham2(j,j)) &
+!          -2d0*abs(zham2(i,j))**2
+!      end do
+!    end do
+
+    Eelec2_t = 0d0
     do i = 1,nelec
       do j = i+1,nelec
         Eelec2_t = Eelec2_t + 2d0*real(zham2(i,i))*real(zham2(j,j)) &
           -2d0*abs(zham2(i,j))**2
       end do
-    end do
-
+   end do
+   Eelec2_t = 2d0*Eelec2_t/dble(nelec-1)
+    Eelec2_t = Eelec2_t + sum(conjg(zpsi)*zhpsi2_t)    
 
 !    write(*,*)Eelec_t,Eelec2_t,Eelec2_t-Eelec_t**2
 
