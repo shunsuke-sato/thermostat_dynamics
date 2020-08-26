@@ -189,11 +189,17 @@ subroutine Langevin_dynamics
     close(40)
 
   else
-    do i = 1, nelec
-      call ranlux_double(rvec1,nsite)
-      call ranlux_double(rvec2,nsite)
-      zpsi(:,i)=rvec1(:)*exp(zi*2d0*pi*rvec2(:))
-    end do
+!    do i = 1, nelec
+!      call ranlux_double(rvec1,nsite)
+!      call ranlux_double(rvec2,nsite)
+!      zpsi(:,i)=rvec1(:)*exp(zi*2d0*pi*rvec2(:))
+!    end do
+
+! set to GS state
+    vt = 0d0
+    vt_o = 0d0
+    call calc_ground_state_for_whole_system
+
   end if
 
   do i = 1, nelec
@@ -384,6 +390,58 @@ subroutine dt_evolve_elec
 
 end subroutine dt_evolve_elec
 !-------------------------------------------------------------------------------
+subroutine calc_ground_state_for_whole_system
+  use global_variables
+  implicit none
+  integer :: i, iscf, nscf
+  complex(8) :: zhpsi_t(nsite,nelec), zhpsi2_t(nsite,nelec)
+!LAPACK ==
+  real(8), allocatable :: amat(:,:)
+  integer :: lwork
+  real(8),allocatable :: work_lp(:)
+  real(8),allocatable :: rwork(:),w(:)
+  integer :: info
+
+  lwork = 6*nsite**2
+  allocate(work_lp(lwork))
+  allocate(rwork(3*nsite-2))
+  allocate(w(nsite))
+!LAPACK ==
+  
+  nscf = 100
+
+  do i = 1, nsite
+    xt(i) = sin(dble(i))
+  end do
+
+  write(*,"(A)")"Compute the ground state"
+  do iscf = 1, nscf
+    write(*,*)"iscf=",iscf
+    ham = ham0
+    do i = 1, nsite
+      ham(i,i) = ham(i,i) - g_couple*xt(i)
+    end do
+
+    amat = ham
+
+    call dsyev('V', 'U', nsite, amat(:,:), nsite &
+      , w(:), work_lp(:), lwork, info) 
+
+    zpsi(:,1:nelec) = amat(:,1:nelec)
+    call calc_density
+    write(*,*)"scf-error",sum((xt-g_couple*rho_e/omega0**2)**2)/nsite
+    xt = g_couple*rho_e/omega0**2
+
+  end do
+
+  open(30,file='gs_rho_xn.out')
+  do i = 1, nsite
+    write(30,"(I7,2x,999e26.16e3)")i,rho_e(i),xt(i)
+  end do
+  close(30)
+
+
+end subroutine calc_ground_state_for_whole_system
 !-------------------------------------------------------------------------------
 subroutine initialize_random_number_generator
   use luxury
