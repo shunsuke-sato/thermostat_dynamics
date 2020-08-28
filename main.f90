@@ -60,7 +60,7 @@ subroutine initialize
   close(30)
 
   tprop      =  10000d0 !2d0*pi*10000d0/omega0
-  dt = 0.1d0
+  dt = 0.01d0
   nt = aint(tprop/dt)+1
 
   nblock = 2
@@ -182,6 +182,7 @@ subroutine Langevin_dynamics
   allocate(Eelec_bave(0:nblock), Eion_bave(0:nblock), Etot_bave(0:nblock), cv_bave(0:nblock))
 
   inquire(file="checkpoint.out",exist=if_file_exists)
+  if_file_exists = .false.
 
   if(if_file_exists)then
     open(40,file="checkpoint.out",form='unformatted')

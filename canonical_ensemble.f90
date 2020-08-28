@@ -54,7 +54,7 @@ subroutine initialize
   g_couple   =  0.1d0 !0.1d0*omega0**2
   gamma_damp =  0.1d0*omega0
 
-  KbT = 8d0 !0.5d0
+  KbT = 1d0 !0.5d0
 
   tprop      =  2d0*pi*10000d0/omega0
   dt = 0.1d0
