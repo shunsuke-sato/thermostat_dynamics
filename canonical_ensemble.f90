@@ -54,7 +54,7 @@ subroutine initialize
   g_couple   =  0.1d0 !0.1d0*omega0**2
   gamma_damp =  0.1d0*omega0
 
-  KbT = 1d0 !0.5d0
+  KbT = 8d0 !0.5d0
 
   tprop      =  2d0*pi*10000d0/omega0
   dt = 0.1d0
@@ -466,9 +466,10 @@ subroutine calc_quantum_classical_canonical_ensemble
     pt = sqrt(KbT)*pt
     xt = x0 + dx
 
+    ss = g_couple*sum(rho_e*xt)/nelec    
     ham = ham0
     do i = 1, nsite
-      ham(i,i) = ham(i,i) - g_couple*xt(i) 
+      ham(i,i) = ham(i,i) - g_couple*xt(i) + ss
     end do
 
 
@@ -516,7 +517,8 @@ subroutine calc_quantum_classical_canonical_ensemble
         ncount = ncount + 1
 
         Eelec_t = sum(nocc_dist*lambda_sp) 
-        Eph_t   = sum(0.5d0*pt**2+0.5d0*omega0**2*xt**2)
+        Eph_t   = sum(0.5d0*pt**2+0.5d0*omega0**2*dx**2+0.5d0*omega0**2*x0**2 &
+           -g_couple*x0*rho_e)
 !        Eph_t   = sum(0.5d0*pt**2+0.5d0*omega0**2*dx**2) ! debug
         Etot_t = Eelec_t + Eph_t ! - Egs_tot
 
