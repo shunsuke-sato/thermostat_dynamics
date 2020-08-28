@@ -201,6 +201,7 @@ subroutine Langevin_dynamics
     vt = 0d0
     vt_o = 0d0
     call calc_ground_state_for_whole_system
+    xt_n = xt
 
   end if
 
