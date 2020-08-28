@@ -44,17 +44,17 @@ subroutine initialize
   integer :: i,j
 
 ! set parameters
-  nelec = 64
+  nelec = 16
   nsite = 2*nelec
 
   t_hop     =  1d0
   delta_gap =  1d0
   
   omega0     =  0.1d0
-  g_couple   =  0.1d0*omega0  ! debug
+  g_couple   =  0.1d0  ! debug
   gamma_damp =  0.1d0*omega0 ! debug
 
-  KbT = 3d0
+  KbT = 1d0
   open(30,file='inp_tmp')
   read(30,*)KbT
   close(30)
@@ -63,7 +63,7 @@ subroutine initialize
   dt = 0.1d0
   nt = aint(tprop/dt)+1
 
-  nblock = 10
+  nblock = 2
 
 
   allocate(zpsi(nsite,nelec))
