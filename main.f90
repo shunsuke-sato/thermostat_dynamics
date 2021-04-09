@@ -19,6 +19,10 @@ module global_variables
   real(8) :: tprop, dt
   integer :: nt
 
+! block average
+  integer :: nblock
+  real(8) :: t_relax
+
 
 end module global_variables
 !-------------------------------------------------------------------------------
@@ -40,7 +44,7 @@ subroutine initialize
   integer :: i,j
 
 ! set parameters
-  nelec = 64
+  nelec = 16
   nsite = 2*nelec
 
   t_hop     =  1d0
@@ -48,13 +52,18 @@ subroutine initialize
   
   omega0     =  0.1d0
   g_couple   =  0.1d0  ! debug
-  gamma_damp =  0.2d0*omega0 ! debug
+  gamma_damp =  0.1d0*omega0 ! debug
 
-  KbT = 3d0
+  KbT = 1d0
+  open(30,file='inp_tmp')
+  read(30,*)KbT
+  close(30)
 
   tprop      =  10000d0 !2d0*pi*10000d0/omega0
-  dt = 0.1d0
+  dt = 0.01d0
   nt = aint(tprop/dt)+1
+
+  nblock = 2
 
 
   allocate(zpsi(nsite,nelec))
@@ -74,6 +83,7 @@ subroutine initialize
     ham0(i,j) = -t_hop
     j = mod(i - 1 -1 + nsite, nsite) + 1
     ham0(i,j) = -t_hop
+    ham0(i,i) = ham0(i,i) + (-1)**(i+1)*0.5d0*delta_gap
   end do
 
   call initialize_random_number_generator
@@ -153,6 +163,12 @@ subroutine Langevin_dynamics
   complex(8) :: zs
   logical :: if_file_exists
 
+  integer :: iblock
+  real(8) :: ss_ave, ss_sigma
+  real(8),allocatable :: Eelec_bave(:), Eion_bave(:)
+  real(8),allocatable :: Etot_bave(:), cv_bave(:)
+  real(8) :: results_data(99)
+
   complex(8),allocatable :: zhpsi_t(:,:),zhpsi2_t(:,:)
   complex(8),allocatable :: zham2(:,:)
   real(8),allocatable :: eps_sp_t(:)
@@ -163,7 +179,10 @@ subroutine Langevin_dynamics
   allocate(zhpsi2_t(nsite,nelec))
   allocate(eps_sp_t(nelec))
 
+  allocate(Eelec_bave(0:nblock), Eion_bave(0:nblock), Etot_bave(0:nblock), cv_bave(0:nblock))
+
   inquire(file="checkpoint.out",exist=if_file_exists)
+  if_file_exists = .false.
 
   if(if_file_exists)then
     open(40,file="checkpoint.out",form='unformatted')
@@ -173,11 +192,18 @@ subroutine Langevin_dynamics
     close(40)
 
   else
-    do i = 1, nelec
-      call ranlux_double(rvec1,nsite)
-      call ranlux_double(rvec2,nsite)
-      zpsi(:,i)=rvec1(:)*exp(zi*2d0*pi*rvec2(:))
-    end do
+!    do i = 1, nelec
+!      call ranlux_double(rvec1,nsite)
+!      call ranlux_double(rvec2,nsite)
+!      zpsi(:,i)=rvec1(:)*exp(zi*2d0*pi*rvec2(:))
+!    end do
+
+! set to GS state
+    vt = 0d0
+    vt_o = 0d0
+    call calc_ground_state_for_whole_system
+    xt_n = xt
+
   end if
 
   do i = 1, nelec
@@ -188,6 +214,8 @@ subroutine Langevin_dynamics
       zpsi(:,i) = zpsi(:,i) -zs*zpsi(:,j)
     end do
   end do
+
+  block_ave: do iblock = 0, nblock
 
   Etot=0d0
   Etot2 = 0d0
@@ -231,13 +259,20 @@ subroutine Langevin_dynamics
     end do
 
 
+!    Eelec2_t = sum(conjg(zpsi)*zhpsi2_t)
+!    do i = 1,nelec
+!      do j = i+1,nelec
+!        Eelec2_t = Eelec2_t + 2d0*real(zham2(i,i))*real(zham2(j,j)) &
+!          -2d0*abs(zham2(i,j))**2
+!      end do
+!    end do
+
     Eelec2_t = sum(conjg(zpsi)*zhpsi2_t)
     do i = 1,nelec
-      do j = i+1,nelec
-        Eelec2_t = Eelec2_t + 2d0*real(zham2(i,i))*real(zham2(j,j)) &
-          -2d0*abs(zham2(i,j))**2
+      do j = 1,nelec
+        Eelec2_t = Eelec2_t + real(zham2(i,i))*real(zham2(j,j))-abs(zham2(i,j))**2
       end do
-    end do
+   end do
 
 
 !    write(*,*)Eelec_t,Eelec2_t,Eelec2_t-Eelec_t**2
@@ -268,6 +303,52 @@ subroutine Langevin_dynamics
   end do
 
   close(30)
+
+  Eelec_bave(iblock)= Eelec/icount
+  Eion_bave(iblock) = Eion/icount
+  Etot_bave(iblock) = Etot/icount
+  cv_bave(iblock) = ((Etot2/icount-(Etot/icount)**2)/nsite)/KbT**2
+
+  end do block_ave
+
+  
+  ss_ave = sum(Eelec_bave(1:nblock))/nblock
+  ss_sigma = sqrt(sum((Eelec_bave(1:nblock)-ss_ave)**2  )/(nblock - 1))
+  write(*,"(A,2x,999e26.16e3)")"Eelec              =",ss_ave
+  write(*,"(A,2x,999e26.16e3)")"standard deviation =",ss_sigma
+  write(*,"(A,2x,999e26.16e3)")"standard error     =",ss_sigma/sqrt(dble(nblock))
+  results_data(1) = kbt
+  results_data(2) = ss_ave
+  results_data(3) = ss_sigma/sqrt(dble(nblock))
+
+  ss_ave = sum(Eion_bave(1:nblock))/nblock
+  ss_sigma = sqrt(sum((Eion_bave(1:nblock)-ss_ave)**2  )/(nblock - 1))
+  write(*,"(A,2x,999e26.16e3)")"Eion               =",ss_ave
+  write(*,"(A,2x,999e26.16e3)")"standard deviation =",ss_sigma
+  write(*,"(A,2x,999e26.16e3)")"standard error     =",ss_sigma/sqrt(dble(nblock))
+  results_data(4) = ss_ave
+  results_data(5) = ss_sigma/sqrt(dble(nblock))
+
+  ss_ave = sum(Etot_bave(1:nblock))/nblock
+  ss_sigma = sqrt(sum((Etot_bave(1:nblock)-ss_ave)**2  )/(nblock - 1))
+  write(*,"(A,2x,999e26.16e3)")"Etot               =",ss_ave
+  write(*,"(A,2x,999e26.16e3)")"standard deviation =",ss_sigma
+  write(*,"(A,2x,999e26.16e3)")"standard error     =",ss_sigma/sqrt(dble(nblock))
+  results_data(6) = ss_ave
+  results_data(7) = ss_sigma/sqrt(dble(nblock))
+
+  ss_ave = sum(cv_bave(1:nblock))/nblock
+  ss_sigma = sqrt(sum((cv_bave(1:nblock)-ss_ave)**2  )/(nblock - 1))
+  write(*,"(A,2x,999e26.16e3)")"cv                 =",ss_ave
+  write(*,"(A,2x,999e26.16e3)")"standard deviation =",ss_sigma
+  write(*,"(A,2x,999e26.16e3)")"standard error     =",ss_sigma/sqrt(dble(nblock))
+  results_data(8) = ss_ave
+  results_data(9) = ss_sigma/sqrt(dble(nblock))
+
+
+  open(40,file='results_data.out')
+  write(40,"(999e26.16e3)")results_data(1:9)
+  close(40)
 
   open(40,file="checkpoint.out",form='unformatted')
   write(40)zpsi
@@ -333,6 +414,58 @@ subroutine dt_evolve_elec
 
 end subroutine dt_evolve_elec
 !-------------------------------------------------------------------------------
+subroutine calc_ground_state_for_whole_system
+  use global_variables
+  implicit none
+  integer :: i, iscf, nscf
+  complex(8) :: zhpsi_t(nsite,nelec), zhpsi2_t(nsite,nelec)
+!LAPACK ==
+  real(8), allocatable :: amat(:,:)
+  integer :: lwork
+  real(8),allocatable :: work_lp(:)
+  real(8),allocatable :: rwork(:),w(:)
+  integer :: info
+
+  lwork = 6*nsite**2
+  allocate(work_lp(lwork))
+  allocate(rwork(3*nsite-2))
+  allocate(w(nsite))
+!LAPACK ==
+  
+  nscf = 100
+
+  do i = 1, nsite
+    xt(i) = sin(dble(i))
+  end do
+
+  write(*,"(A)")"Compute the ground state"
+  do iscf = 1, nscf
+    write(*,*)"iscf=",iscf
+    ham = ham0
+    do i = 1, nsite
+      ham(i,i) = ham(i,i) - g_couple*xt(i)
+    end do
+
+    amat = ham
+
+    call dsyev('V', 'U', nsite, amat(:,:), nsite &
+      , w(:), work_lp(:), lwork, info) 
+
+    zpsi(:,1:nelec) = amat(:,1:nelec)
+    call calc_density
+    write(*,*)"scf-error",sum((xt-g_couple*rho_e/omega0**2)**2)/nsite
+    xt = g_couple*rho_e/omega0**2
+
+  end do
+
+  open(30,file='gs_rho_xn.out')
+  do i = 1, nsite
+    write(30,"(I7,2x,999e26.16e3)")i,rho_e(i),xt(i)
+  end do
+  close(30)
+
+
+end subroutine calc_ground_state_for_whole_system
 !-------------------------------------------------------------------------------
 subroutine initialize_random_number_generator
   use luxury

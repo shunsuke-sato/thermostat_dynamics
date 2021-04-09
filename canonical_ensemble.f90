@@ -44,7 +44,7 @@ subroutine initialize
   integer :: i,j
 
 ! set parameters
-  nelec = 64
+  nelec = 16
   nsite = 2*nelec
 
   t_hop     =  1d0
@@ -462,11 +462,11 @@ subroutine calc_quantum_classical_canonical_ensemble
   do isample = 1, nsample
     call gaussian_random_number_vec(dx,nsite)
     call gaussian_random_number_vec(pt,nsite)
-    dx = sqrt(KbT)/omega0*dx ! debug
-    pt = sqrt(KbT)*pt ! debug
+    dx = sqrt(KbT)/omega0*dx
+    pt = sqrt(KbT)*pt
     xt = x0 + dx
 
-    ss = g_couple*sum(rho_e*xt)/nelec
+    ss = g_couple*sum(rho_e*xt)/nelec    
     ham = ham0
     do i = 1, nsite
       ham(i,i) = ham(i,i) - g_couple*xt(i) + ss
@@ -518,7 +518,7 @@ subroutine calc_quantum_classical_canonical_ensemble
 
         Eelec_t = sum(nocc_dist*lambda_sp) 
         Eph_t   = sum(0.5d0*pt**2+0.5d0*omega0**2*dx**2+0.5d0*omega0**2*x0**2 &
-          -g_couple*x0*rho_e)
+           -g_couple*x0*rho_e)
 !        Eph_t   = sum(0.5d0*pt**2+0.5d0*omega0**2*dx**2) ! debug
         Etot_t = Eelec_t + Eph_t ! - Egs_tot
 
