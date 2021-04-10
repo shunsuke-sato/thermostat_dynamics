@@ -61,11 +61,11 @@ subroutine initialize
   close(30)
 
 !  tprop      =  10000d0 !2d0*pi*10000d0/omega0
-  tprop      =  3000d0 !2d0*pi*10000d0/omega0
+  tprop      =  10000d0 !2d0*pi*10000d0/omega0
   dt = 0.01d0
   nt = aint(tprop/dt)+1
 
-  nblock = 2
+  nblock = 4
 
 
   allocate(zpsi(nsite,nelec), psi_gs(nsite,nsite), lambda_sp_gs(nsite))
@@ -365,7 +365,7 @@ subroutine Langevin_dynamics
 
 
   open(40,file='pop_dist_langevin.out')
-  write(40,"(A,2x,I7,2x,999e26.16e3)")"# num. elec=",nelec,sum(pop_dist(:,1:nblock))/nblock
+  write(40,"(A,2x,I7,2x,999e26.16e3)")"# num. elec=",nelec,nelec,sum(pop_dist_bave(:,1:nblock))/nblock
   do i = 1, nsite
     ss_ave = sum(pop_dist_bave(i,1:nblock))/nblock
     ss_sigma = sqrt(sum((pop_dist_bave(i,1:nblock) -ss_ave)**2))/(nblock-1)
