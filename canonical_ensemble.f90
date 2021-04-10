@@ -10,9 +10,9 @@ module global_variables
   real(8) :: t_hop, delta_gap
   real(8) :: KbT
   real(8),allocatable :: ham(:,:), ham0(:,:)
-  real(8),allocatable :: lambda_sp(:)
+  real(8),allocatable :: lambda_sp(:),lambda_sp_gs(:)
   complex(8),allocatable :: zpsi(:,:)
-  real(8),allocatable :: psi(:,:)
+  real(8),allocatable :: psi(:,:),psi_gs(:,:)
   real(8),allocatable :: rho_e(:)
   real(8) :: omega0, g_couple, gamma_damp
   real(8),allocatable :: xt(:), xt_n(:), vt(:), vt_n(:), vt_o(:)
@@ -47,7 +47,7 @@ subroutine initialize
   nelec = 16
   nsite = 2*nelec
 
-  t_hop     =  1d0
+  t_hop     =  4d0
   delta_gap =  1d0
   
   omega0     =  0.1d0
@@ -62,6 +62,7 @@ subroutine initialize
 
 
   allocate(psi(nsite,nelec),zpsi(nsite,nelec))
+  allocate(psi_gs(nsite,nsite))
   allocate(rho_e(nsite))
   allocate(xt(nsite), xt_n(nsite), vt(nsite), vt_n(nsite), vt_o(nsite))
 
@@ -71,7 +72,7 @@ subroutine initialize
   
 
   allocate(ham(nsite,nsite), ham0(nsite, nsite))
-  allocate(lambda_sp(nsite))
+  allocate(lambda_sp(nsite),lambda_sp_gs(nsite))
 
   ham0 = 0d0
   do i = 1, nsite
@@ -129,6 +130,7 @@ subroutine calc_quantum_classical_ground_state
 
     lambda_sp(:) = w(:)
     psi(1:nsite,1:nelec) = amat(1:nsite,1:nelec)
+    psi_gs = amat
 
     Eelec = sum(w(1:nelec))
     Eion = 0.5d0*omega0**2*sum(xt**2)
@@ -148,6 +150,7 @@ subroutine calc_quantum_classical_ground_state
   close(30)
 
   Egs_tot = Etot
+  lambda_sp_gs = lambda_sp
 
   open(30,file='gs_data.out')
   do i=1,nsite
@@ -432,6 +435,8 @@ subroutine calc_quantum_classical_canonical_ensemble
   real(8) :: Eelec_t, Eph_t, Etot_t
   real(8) :: Eelec, Eph, Etot, Etot2, cv
   real(8) :: rvec(1), energy_diff
+  real(8) :: pop_dist_t(nsite),pop_dist(nsite)
+  real(8) :: psi_t(nsite,nsite)
 !LAPACK ==
   real(8), allocatable :: amat(:,:)
   integer :: lwork
@@ -448,6 +453,7 @@ subroutine calc_quantum_classical_canonical_ensemble
 
   nsample = 1024
 
+  pop_dist = 0d0
   nocc_dist = 0
   nocc_dist(1:nelec) = 1
 
@@ -478,7 +484,7 @@ subroutine calc_quantum_classical_canonical_ensemble
       , w(:), work_lp(:), lwork, info)
 
     lambda_sp(:) = w(:)
-    psi(1:nsite,1:nelec) = amat(1:nsite,1:nelec)
+    psi_t(1:nsite,1:nsite) = amat(1:nsite,1:nsite)
 
     do iter = 1, nsite*128
 
@@ -528,6 +534,17 @@ subroutine calc_quantum_classical_canonical_ensemble
         Etot2 = Etot2 + Etot_t**2
         write(30,"(I7,2x,99e26.16e3)")ncount,Eelec/ncount,Eph/ncount,Etot/ncount &
           ,(Etot2/ncount-(Etot/ncount)**2)/KbT**2
+
+
+        do i = 1, nsite
+          do j = 1, nsite
+            if(nocc_dist(j) /= 0d0)then
+              pop_dist(i) = pop_dist(i) + sum(psi_gs(:,i)*psi_t(:,j))**2*nocc_dist(j)
+            end if
+          end do
+        end do
+
+
       end if
 
       
@@ -545,6 +562,14 @@ subroutine calc_quantum_classical_canonical_ensemble
   write(*,"(A,2x,999e26.16e3)")'Eph  =',Eph/nsite
   write(*,"(A,2x,999e26.16e3)")'Etot =',Etot/nsite
   write(*,"(A,2x,999e26.16e3)")'cv   =',cv/nsite
+
+  pop_dist = pop_dist/ncount
+  open(30,file='pop_dist.out')
+  write(30,"(A,2x,I7,2x,999e26.16e3)")"# num. elec=",nelec,sum(pop_dist)
+  do i = 1, nsite
+    write(30,"(I7,2x,999e26.16e3)")i,lambda_sp_gs(i),pop_dist(i)
+  end do
+  close(30)
 
 end subroutine calc_quantum_classical_canonical_ensemble
 !-------------------------------------------------------------------------------
