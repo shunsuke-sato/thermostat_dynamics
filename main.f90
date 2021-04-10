@@ -10,6 +10,7 @@ module global_variables
   real(8) :: t_hop, delta_gap
   real(8) :: KbT
   real(8),allocatable :: ham(:,:), ham0(:,:)
+  real(8),allocatable :: psi_gs(:,:), lambda_sp_gs(:)
   complex(8),allocatable :: zpsi(:,:)
   real(8),allocatable :: rho_e(:)
   real(8) :: omega0, g_couple, gamma_damp
@@ -47,26 +48,27 @@ subroutine initialize
   nelec = 16
   nsite = 2*nelec
 
-  t_hop     =  1d0
+  t_hop     =  4d0
   delta_gap =  1d0
   
   omega0     =  0.1d0
   g_couple   =  0.1d0  ! debug
   gamma_damp =  0.1d0*omega0 ! debug
 
-  KbT = 1d0
+  KbT = 2d0
   open(30,file='inp_tmp')
   read(30,*)KbT
   close(30)
 
-  tprop      =  10000d0 !2d0*pi*10000d0/omega0
+!  tprop      =  10000d0 !2d0*pi*10000d0/omega0
+  tprop      =  3000d0 !2d0*pi*10000d0/omega0
   dt = 0.01d0
   nt = aint(tprop/dt)+1
 
   nblock = 2
 
 
-  allocate(zpsi(nsite,nelec))
+  allocate(zpsi(nsite,nelec), psi_gs(nsite,nsite), lambda_sp_gs(nsite))
   allocate(rho_e(nsite))
   allocate(xt(nsite), xt_n(nsite), vt(nsite), vt_n(nsite), vt_o(nsite))
 
@@ -158,6 +160,7 @@ subroutine Langevin_dynamics
   real(8) :: Etot_t, Eelec_t, Eion_t
   real(8) :: Etot2
   real(8) :: Etot2_t, Eelec2_t
+  real(8) :: pop_dist(nsite)
   real(8) :: rvec1(nsite),rvec2(nsite)
   real(8) :: ss
   complex(8) :: zs
@@ -167,6 +170,7 @@ subroutine Langevin_dynamics
   real(8) :: ss_ave, ss_sigma
   real(8),allocatable :: Eelec_bave(:), Eion_bave(:)
   real(8),allocatable :: Etot_bave(:), cv_bave(:)
+  real(8),allocatable :: pop_dist_bave(:,:)
   real(8) :: results_data(99)
 
   complex(8),allocatable :: zhpsi_t(:,:),zhpsi2_t(:,:)
@@ -180,13 +184,14 @@ subroutine Langevin_dynamics
   allocate(eps_sp_t(nelec))
 
   allocate(Eelec_bave(0:nblock), Eion_bave(0:nblock), Etot_bave(0:nblock), cv_bave(0:nblock))
+  allocate(pop_dist_bave(nsite,0:nblock))
 
   inquire(file="checkpoint.out",exist=if_file_exists)
   if_file_exists = .false.
 
   if(if_file_exists)then
     open(40,file="checkpoint.out",form='unformatted')
-    read(40)zpsi
+    read(40)zpsi,psi_gs
     read(40)xt_n,xt
     read(40)vt_n,vt_o
     close(40)
@@ -221,7 +226,7 @@ subroutine Langevin_dynamics
   Etot2 = 0d0
   Eelec=0d0
   Eion=0d0
-
+  pop_dist = 0d0
 
 
   open(30,file='energy_t.out')
@@ -291,6 +296,13 @@ subroutine Langevin_dynamics
     write(30,"(999e26.16e3)")dt*it,Eelec/icount,Eion/icount,Etot/icount&
       ,((Etot2/icount-(Etot/icount)**2)/nsite)/KbT**2
 
+
+
+    do i = 1, nsite
+      do j = 1, nelec
+        pop_dist(i) = pop_dist(i) + abs(sum(psi_gs(:,i)*zpsi(:,j)))**2
+      end do
+    end do
 ! end  : calculate observables
 
 
@@ -308,6 +320,7 @@ subroutine Langevin_dynamics
   Eion_bave(iblock) = Eion/icount
   Etot_bave(iblock) = Etot/icount
   cv_bave(iblock) = ((Etot2/icount-(Etot/icount)**2)/nsite)/KbT**2
+  pop_dist_bave(:,iblock) = pop_dist/icount
 
   end do block_ave
 
@@ -350,8 +363,18 @@ subroutine Langevin_dynamics
   write(40,"(999e26.16e3)")results_data(1:9)
   close(40)
 
+
+  open(40,file='pop_dist_langevin.out')
+  write(40,"(A,2x,I7,2x,999e26.16e3)")"# num. elec=",nelec,sum(pop_dist(:,1:nblock))/nblock
+  do i = 1, nsite
+    ss_ave = sum(pop_dist_bave(i,1:nblock))/nblock
+    ss_sigma = sqrt(sum((pop_dist_bave(i,1:nblock) -ss_ave)**2))/(nblock-1)
+    write(40,"(I7,2x,999e26.16e3)")i,lambda_sp_gs(i),ss_ave,ss_sigma
+  end do
+  close(40)
+
   open(40,file="checkpoint.out",form='unformatted')
-  write(40)zpsi
+  write(40)zpsi,psi_gs
   write(40)xt_n,xt
   write(40)vt_n,vt_o
   close(40)
@@ -452,6 +475,8 @@ subroutine calc_ground_state_for_whole_system
       , w(:), work_lp(:), lwork, info) 
 
     zpsi(:,1:nelec) = amat(:,1:nelec)
+    psi_gs = amat
+    lambda_sp_gs = w
     call calc_density
     write(*,*)"scf-error",sum((xt-g_couple*rho_e/omega0**2)**2)/nsite
     xt = g_couple*rho_e/omega0**2
