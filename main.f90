@@ -60,7 +60,7 @@ subroutine initialize
   read(30,*)KbT
   close(30)
 
-  tprop      =  10000d0 !2d0*pi*10000d0/omega0
+  tprop      =  20000d0 !2d0*pi*10000d0/omega0
 !  tprop      =  50d0 !2d0*pi*10000d0/omega0
   dt = 0.01d0
   nt = aint(tprop/dt)+1
